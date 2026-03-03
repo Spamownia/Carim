@@ -1,6 +1,7 @@
 import os
 from threading import Thread
 from flask import Flask
+import subprocess
 import sys
 
 app = Flask(__name__)
@@ -25,17 +26,22 @@ def run_flask():
     )
 
 if __name__ == '__main__':
+    # Uruchamiamy Flask w tle
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
     print("Flask keep-alive started on port", os.environ.get("PORT", "nieznany"))
-    print("Starting CARIM Discord bot...")
+    print("Starting CARIM Discord bot via subprocess...")
 
-    # ────────────────────────────────────────────────
-    # Tutaj poprawka – uruchamiamy CLI entrypoint
-    # ────────────────────────────────────────────────
-    from carim_discord_bot.cli import main as carim_cli_main
-    sys.argv = ['carim-bot']                     # symulujemy komendę carim-bot
-    # sys.argv = ['carim-bot', '--verbose']      # jeśli chcesz więcej logów
+    # Symulujemy uruchomienie carim-bot (jakbyś wpisał w terminalu: carim-bot)
+    # Dodajemy --verbose jeśli chcesz więcej logów do debugu
+    cmd = [sys.executable, "-m", "carim_discord_bot", "--verbose"]  # lub bez --verbose
 
-    carim_cli_main()
+    # Uruchamiamy i czekamy (blokuje główny wątek, ale to OK – bot ma działać non-stop)
+    process = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr, text=True)
+
+    # Czekamy na zakończenie (w praktyce bot nigdy nie kończy, chyba że błąd)
+    process.wait()
+
+    # Jeśli bot padnie – Flask też padnie (Render to wykryje i zrestartuje)
+    sys.exit(process.returncode)
