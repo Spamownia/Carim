@@ -26,17 +26,17 @@ def run_flask():
     )
 
 if __name__ == '__main__':
-    # Flask w tle – żeby Render nie uśpił instancji na free planie
+    # Flask w tle – żeby Render nie uśpił instancji
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
     print("Flask keep-alive started on port", os.environ.get("PORT", "nieznany"))
     print("Starting CARIM bot via 'carim-bot' command...")
 
-    # Najważniejsza część – uruchamiamy bot tak, jak normalnie z terminala
+    # Najważniejsze – uruchamiamy bota
     cmd = ["carim-bot"]
 
-    # Jeśli chcesz więcej informacji w logach Render → odkomentuj poniższą linię
+    # Jeśli chcesz więcej logów do debugowania:
     # cmd = ["carim-bot", "--verbose"]
 
     try:
@@ -45,20 +45,17 @@ if __name__ == '__main__':
             stdout=sys.stdout,
             stderr=sys.stderr,
             text=True,
-            bufsize=1,                  # line buffered – logi na bieżąco
+            bufsize=1,                  # logi na bieżąco
             universal_newlines=True
         )
-        
-        # Czekamy na proces (bot powinien działać w nieskończoność)
-        process.wait()
-        
+        process.wait()              # czekamy – bot powinien działać w nieskończoność
     except FileNotFoundError:
         print("BŁĄD: komenda 'carim-bot' nie znaleziona w PATH.")
-        print("Sprawdź czy pakiet carim-discord-bot zainstalował się poprawnie.")
+        print("Sprawdź instalację pakietu carim-discord-bot.")
         sys.exit(1)
     except Exception as e:
         print(f"Błąd podczas uruchamiania bota: {e}")
         sys.exit(1)
 
-    # Jeśli bot sam się zakończy (rzadko) – Render to wykryje i zrestartuje
+    # Jeśli bot sam padnie – Render powinien zrestartować instancję
     sys.exit(process.returncode)
