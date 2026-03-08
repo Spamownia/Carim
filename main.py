@@ -2,12 +2,9 @@ import os
 import sys
 from threading import Thread
 from flask import Flask
-import asyncio
+import subprocess
 import socket
-
-# Importujemy tylko to, co naprawdę istnieje w carim-discord-bot 2.2.5
-from carim_discord_bot.rcon.rcon_protocol import RconProtocol
-from carim_discord_bot.rcon.rcon_service import RconService
+import asyncio
 
 app = Flask(__name__)
 app.config['PROPAGATE_EXCEPTIONS'] = True
@@ -29,76 +26,73 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 
-async def rcon_loop():
+def test_socket_resolve():
     host = os.environ.get('RCON_IP', '').strip()
     port_str = os.environ.get('RCON_PORT', '3705').strip()
-    password = os.environ.get('RCON_PASSWORD', '')
 
-    if not host or not port_str or not password:
-        print("BRAK RCON_IP / RCON_PORT / RCON_PASSWORD – pomijam RCon")
+    print(f"\n=== TEST SOCKET RESOLVE ===")
+    print(f"Host raw: '{os.environ.get('RCON_IP')}'")
+    print(f"Host cleaned: '{host}'")
+    print(f"Port raw: '{os.environ.get('RCON_PORT')}'")
+    print(f"Port cleaned: '{port_str}'")
+
+    if not host or not port_str:
+        print("BRAK IP lub PORT – test pominięty")
         return
 
     try:
         port = int(port_str)
     except ValueError:
-        print(f"Błąd: RCON_PORT '{port_str}' nie jest liczbą")
+        print(f"Błąd: port '{port_str}' nie jest liczbą")
         return
 
-    print(f"Próba RCon: {host}:{port} (hasło: {'ustawione' if password else 'BRAK'})")
+    # Test 1: gethostbyname (tylko IP)
+    try:
+        resolved_ip = socket.gethostbyname(host)
+        print(f"gethostbyname({host}) → {resolved_ip}  (SUKCES)")
+    except socket.gaierror as e:
+        print(f"gethostbyname → BŁĄD: {e}")
+        return
 
-    # Ręczny resolve IP + port
-    loop = asyncio.get_running_loop()
+    # Test 2: getaddrinfo (IP + port)
     try:
         addr_info = socket.getaddrinfo(host, port, family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        if not addr_info:
-            print("getaddrinfo zwróciło pustą listę")
-            return
-        sockaddr = addr_info[0][4]  # ('147.93.162.60', 3705)
-
-        print(f"Resolved: {sockaddr}")
-
-        # Tworzymy endpoint ręcznie (używamy RconProtocol z biblioteki)
-        transport, protocol = await loop.create_datagram_endpoint(
-            lambda: RconProtocol(password),
-            local_addr=('0.0.0.0', 0),
-            remote_addr=sockaddr
-        )
-
-        print("RCon transport utworzony pomyślnie!")
-
-        # Przykładowy loop – co 30 s wysyłamy "players" (możesz zmienić)
-        while True:
-            await asyncio.sleep(30)
-            try:
-                protocol.send_command("players")
-                print("Wysłano komendę: players")
-            except Exception as e:
-                print(f"Błąd wysyłania komendy: {e}")
-
+        print(f"getaddrinfo({host}, {port}) → SUKCES: {addr_info[0]}")
+    except socket.gaierror as e:
+        print(f"getaddrinfo → BŁĄD: {e}")
     except Exception as e:
-        print(f"Błąd RCon: {e}")
+        print(f"Inny błąd getaddrinfo: {e}")
 
 
 if __name__ == '__main__':
-    print("=== START MAIN ===")
-    print(f"RCON_IP   : {os.environ.get('RCON_IP')}")
-    print(f"RCON_PORT : {os.environ.get('RCON_PORT')}")
-    print(f"RCON_PASSWORD length: {len(os.environ.get('RCON_PASSWORD', ''))}")
+    print("=== MAIN START – DEBUG ===")
+    test_socket_resolve()
+    print("=== KONIEC DEBUG ===\n")
 
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    print("Flask keep-alive uruchomiony")
+    print("Flask keep-alive uruchomiony na porcie", os.environ.get("PORT", "nieznany"))
 
-    # Główna pętla asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    cmd = ["carim-bot"]
+    # cmd = ["carim-bot", "--verbose"]  # odkomentuj, jeśli chcesz pełne logi bota
 
+    print("Uruchamiam carim-bot...")
     try:
-        loop.run_until_complete(rcon_loop())
-    except KeyboardInterrupt:
-        print("Wyłączanie...")
+        process = subprocess.Popen(
+            cmd,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+        process.wait()
+    except FileNotFoundError:
+        print("BŁĄD: 'carim-bot' nie znaleziono w PATH")
+        sys.exit(1)
     except Exception as e:
-        print(f"Błąd w pętli: {e}")
-    finally:
-        loop.close()
+        print(f"Błąd startu carim-bot: {e}")
+        sys.exit(1)
+
+    sys.exit(process.returncode)
