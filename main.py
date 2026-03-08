@@ -4,7 +4,10 @@ from threading import Thread
 from flask import Flask
 import asyncio
 import socket
-from carim_discord_bot.rcon.rcon_connection import RconConnection  # tylko to importujemy
+
+# Importujemy tylko to, co naprawdę istnieje w carim-discord-bot 2.2.5
+from carim_discord_bot.rcon.rcon_protocol import RconProtocol
+from carim_discord_bot.rcon.rcon_service import RconService
 
 app = Flask(__name__)
 app.config['PROPAGATE_EXCEPTIONS'] = True
@@ -43,32 +46,30 @@ async def rcon_loop():
 
     print(f"Próba RCon: {host}:{port} (hasło: {'ustawione' if password else 'BRAK'})")
 
-    # Ręczny resolve + połączenie
+    # Ręczny resolve IP + port
     loop = asyncio.get_running_loop()
     try:
-        # Najpierw resolve
         addr_info = socket.getaddrinfo(host, port, family=socket.AF_INET, type=socket.SOCK_DGRAM)
         if not addr_info:
             print("getaddrinfo zwróciło pustą listę")
             return
         sockaddr = addr_info[0][4]  # ('147.93.162.60', 3705)
 
-        print(f"Resolved sockaddr: {sockaddr}")
+        print(f"Resolved: {sockaddr}")
 
-        # Tworzymy transport i protokół
+        # Tworzymy endpoint ręcznie (używamy RconProtocol z biblioteki)
         transport, protocol = await loop.create_datagram_endpoint(
-            lambda: RconConnection(password=password),
+            lambda: RconProtocol(password),
             local_addr=('0.0.0.0', 0),
             remote_addr=sockaddr
         )
 
-        print("RCon połączony! Transport utworzony.")
+        print("RCon transport utworzony pomyślnie!")
 
-        # Przykładowy loop – co 30 s wysyłamy komendę "players"
+        # Przykładowy loop – co 30 s wysyłamy "players" (możesz zmienić)
         while True:
             await asyncio.sleep(30)
             try:
-                # Wysyłamy komendę
                 protocol.send_command("players")
                 print("Wysłano komendę: players")
             except Exception as e:
@@ -89,7 +90,7 @@ if __name__ == '__main__':
 
     print("Flask keep-alive uruchomiony")
 
-    # Uruchamiamy asyncio loop
+    # Główna pętla asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
