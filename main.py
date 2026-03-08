@@ -1,9 +1,9 @@
 import os
+import sys
 from threading import Thread
 from flask import Flask
 import subprocess
-import sys
-import socket  # do testu resolve IP
+import socket
 
 app = Flask(__name__)
 app.config['PROPAGATE_EXCEPTIONS'] = True
@@ -32,46 +32,57 @@ def run_flask():
 
 if __name__ == '__main__':
     # ==============================================
-    # DEBUG – wypiszmy wszystko co ważne przed startem bota
+    # SUPER DEBUG – wszystko co może pomóc
     # ==============================================
-    print("=== DEBUG START – RENDER ENV VARS I ŚRODOWISKO ===")
+    print("=== SUPER DEBUG – START ===")
     print(f"Python version: {sys.version}")
     print(f"Current working dir: {os.getcwd()}")
-    print(f"PATH: {os.environ.get('PATH', 'brak')[:200]}...")  # skracamy, bo długie
+    print(f"PATH (skrócone): {os.environ.get('PATH', 'brak')[:300]}...")
 
-    print("\nKluczowe zmienne CARIM:")
-    print(f"RCON_IP       : '{os.environ.get('RCON_IP', 'BRAK')}'")
-    print(f"RCON_PORT     : '{os.environ.get('RCON_PORT', 'BRAK')}'")
-    print(f"RCON_PASSWORD : {'ustawione (długość ' + str(len(os.environ.get('RCON_PASSWORD', ''))) + ')' if 'RCON_PASSWORD' in os.environ else 'BRAK'}")
-    print(f"DISCORD_TOKEN : {'ustawione (długość ' + str(len(os.environ.get('DISCORD_TOKEN', ''))) + ')' if 'DISCORD_TOKEN' in os.environ else 'BRAK'}")
-    print(f"DISCORD_CHANNEL_ID : '{os.environ.get('DISCORD_CHANNEL_ID', 'BRAK')}'")
-    print(f"LOG_CHANNEL_ID     : '{os.environ.get('LOG_CHANNEL_ID', 'BRAK')}'")
-    print(f"COMMAND_PREFIX     : '{os.environ.get('COMMAND_PREFIX', 'BRAK')}'")
+    print("\nKluczowe zmienne CARIM (raw i stripped):")
+    keys = [
+        'RCON_IP', 'RCON_PORT', 'RCON_PASSWORD',
+        'DISCORD_TOKEN', 'DISCORD_CHANNEL_ID', 'LOG_CHANNEL_ID',
+        'COMMAND_PREFIX'
+    ]
+    for key in keys:
+        raw = os.environ.get(key, 'BRAK')
+        stripped = raw.strip() if raw else 'BRAK'
+        length = len(raw) if raw else 0
+        print(f"{key:18}: raw='{raw}' | stripped='{stripped}' | length={length}")
 
     # Test resolve IP – sprawdzamy, czy system widzi ten adres
-    rcon_ip = os.environ.get('RCON_IP')
-    if rcon_ip:
+    rcon_ip_raw = os.environ.get('RCON_IP')
+    if rcon_ip_raw:
+        rcon_ip = rcon_ip_raw.strip()
+        print(f"\nTest resolve IP: '{rcon_ip}'")
         try:
-            resolved = socket.gethostbyname(rcon_ip.strip())
-            print(f"socket.gethostbyname('{rcon_ip}') → {resolved}  (OK)")
+            resolved = socket.gethostbyname(rcon_ip)
+            print(f"→ socket.gethostbyname → {resolved} (SUKCES)")
+            try:
+                addr_info = socket.getaddrinfo(rcon_ip, 0)
+                print(f"→ getaddrinfo → {addr_info[:2]}... (OK)")
+            except Exception as e:
+                print(f"→ getaddrinfo błąd: {e}")
         except socket.gaierror as e:
-            print(f"socket.gethostbyname('{rcon_ip}') → BŁĄD: {e}")
+            print(f"→ BŁĄD resolve: {e}")
         except Exception as e:
-            print(f"Błąd podczas resolve IP: {e}")
+            print(f"→ Inny błąd podczas resolve: {e}")
     else:
-        print("RCON_IP jest pusty – nie da się przetestować resolve")
+        print("\nRCON_IP jest pusty – nie da się przetestować resolve")
 
-    print("=== KONIEC DEBUGU ===\n")
+    print("=== KONIEC SUPER DEBUG ===\n")
 
-    # Flask w tle
+    # Flask w tle – żeby Render nie uśpił instancji
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
     print("Flask keep-alive started on port", os.environ.get("PORT", "nieznany"))
     print("Starting CARIM bot via 'carim-bot' command...")
 
+    # Najważniejsze – uruchamiamy bota
     cmd = ["carim-bot"]
-    # cmd = ["carim-bot", "--verbose"]   # odkomentuj jeśli chcesz bardzo szczegółowe logi
+    # cmd = ["carim-bot", "--verbose"]  # odkomentuj jeśli chcesz więcej logów
 
     try:
         process = subprocess.Popen(
@@ -82,7 +93,7 @@ if __name__ == '__main__':
             bufsize=1,
             universal_newlines=True
         )
-        process.wait()
+        process.wait()  # czekamy – bot powinien działać w nieskończoność
     except FileNotFoundError:
         print("BŁĄD: komenda 'carim-bot' nie znaleziona w PATH.")
         print("Sprawdź instalację pakietu carim-discord-bot.")
@@ -91,4 +102,5 @@ if __name__ == '__main__':
         print(f"Błąd podczas uruchamiania bota: {e}")
         sys.exit(1)
 
+    # Jeśli bot sam padnie – Render powinien zrestartować
     sys.exit(process.returncode)
