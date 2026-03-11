@@ -5,7 +5,7 @@ from flask import Flask
 import asyncio
 import socket
 
-# Tylko jedna klasa, która na pewno istnieje w pakiecie 2.2.5
+# Tylko jedna klasa, która istnieje w pakiecie
 from carim_discord_bot.rcon.rcon_protocol import RconProtocol
 
 app = Flask(__name__)
@@ -28,7 +28,7 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 
-async def rcon_connection():
+async def rcon_manual_connection():
     host = os.environ.get('RCON_IP', '').strip()
     port_str = os.environ.get('RCON_PORT', '3705').strip()
     password = os.environ.get('RCON_PASSWORD', '')
@@ -52,29 +52,29 @@ async def rcon_connection():
     try:
         addr_info = socket.getaddrinfo(host, port, family=socket.AF_INET, type=socket.SOCK_DGRAM)
         sockaddr = addr_info[0][4]
-        print(f"Resolved: {sockaddr}")
+        print(f"Resolved sockaddr: {sockaddr}")
     except Exception as e:
-        print(f"Błąd resolve: {e}")
+        print(f"Błąd resolve IP/port: {e}")
         return
 
-    # Tworzymy transport z RconProtocol
+    # Tworzymy transport z RconProtocol (to jest kluczowa klasa, która działa)
     try:
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: RconProtocol(password),
             local_addr=('0.0.0.0', 0),
             remote_addr=sockaddr
         )
-        print("=== RCON POŁĄCZENIE UDANE! ===")
+        print("=== RCON POŁĄCZENIE UDANE! Transport i protokół utworzone ===")
 
-        # Prosty loop – co 60 s wysyłamy komendę "players" (zmień na co chcesz)
+        # Prosty loop – co 60 s wysyłamy komendę (zmień na co chcesz)
         while True:
             await asyncio.sleep(60)
             try:
                 protocol.send_command("players")
                 print("Wysłano komendę: players")
             except Exception as e:
-                print(f"Błąd wysyłania: {e}")
-                # Tutaj możesz dodać reconnect jeśli chcesz
+                print(f"Błąd wysyłania komendy: {e}")
+                # Jeśli chcesz reconnect – dodaj tu logikę
 
         transport.close()
     except Exception as e:
@@ -97,10 +97,10 @@ if __name__ == '__main__':
     asyncio.set_event_loop(loop)
 
     try:
-        loop.run_until_complete(rcon_connection())
+        loop.run_until_complete(rcon_manual_connection())
     except KeyboardInterrupt:
         print("Wyłączanie...")
     except Exception as e:
-        print(f"Błąd w pętli: {e}")
+        print(f"Błąd w asyncio loop: {e}")
     finally:
         loop.close()
