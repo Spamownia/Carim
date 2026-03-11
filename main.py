@@ -5,7 +5,7 @@ from flask import Flask
 import asyncio
 import socket
 
-# Tylko to, co na pewno istnieje w carim-discord-bot 2.2.5
+# Tylko jedna klasa, która na pewno istnieje w pakiecie 2.2.5
 from carim_discord_bot.rcon.rcon_protocol import RconProtocol
 
 app = Flask(__name__)
@@ -28,13 +28,13 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 
-async def rcon_connection_loop():
+async def rcon_connection():
     host = os.environ.get('RCON_IP', '').strip()
     port_str = os.environ.get('RCON_PORT', '3705').strip()
     password = os.environ.get('RCON_PASSWORD', '')
 
     if not host or not port_str or not password:
-        print("BRAK RCON_IP / RCON_PORT / RCON_PASSWORD – RCon wyłączony")
+        print("RCON nie skonfigurowany – pomijam")
         await asyncio.sleep(3600)  # śpij godzinę
         return
 
@@ -54,7 +54,7 @@ async def rcon_connection_loop():
         sockaddr = addr_info[0][4]
         print(f"Resolved: {sockaddr}")
     except Exception as e:
-        print(f"Błąd resolve IP/port: {e}")
+        print(f"Błąd resolve: {e}")
         return
 
     # Tworzymy transport z RconProtocol
@@ -65,17 +65,16 @@ async def rcon_connection_loop():
             remote_addr=sockaddr
         )
         print("=== RCON POŁĄCZENIE UDANE! ===")
-        print("Transport i protokół utworzone")
 
-        # Prosty loop – co 60 s wysyłamy "players" (możesz zmienić)
+        # Prosty loop – co 60 s wysyłamy komendę "players" (zmień na co chcesz)
         while True:
             await asyncio.sleep(60)
             try:
                 protocol.send_command("players")
-                print("Wysłano: players")
+                print("Wysłano komendę: players")
             except Exception as e:
-                print(f"Błąd wysyłania komendy: {e}")
-                break  # lub reconnect, jeśli chcesz
+                print(f"Błąd wysyłania: {e}")
+                # Tutaj możesz dodać reconnect jeśli chcesz
 
         transport.close()
     except Exception as e:
@@ -93,15 +92,15 @@ if __name__ == '__main__':
 
     print("Flask keep-alive uruchomiony")
 
-    # Uruchamiamy asyncio loop
+    # Główna pętla asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     try:
-        loop.run_until_complete(rcon_connection_loop())
+        loop.run_until_complete(rcon_connection())
     except KeyboardInterrupt:
         print("Wyłączanie...")
     except Exception as e:
-        print(f"Błąd asyncio loop: {e}")
+        print(f"Błąd w pętli: {e}")
     finally:
         loop.close()
