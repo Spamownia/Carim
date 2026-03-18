@@ -1,150 +1,131 @@
 import os
-import sys
+import asyncio
 import threading
-import socket
 import time
-from flask import Flask
+import socket
+import discord
+from discord import app_commands
+from dotenv import load_dotenv
 
-app = Flask(__name__)
-app.config['PROPAGATE_EXCEPTIONS'] = True
+load_dotenv()
 
+# ========================= KONFIGURACJA =========================
+TOKEN = os.getenv("DISCORD_TOKEN")
+RCON_IP = os.getenv("RCON_IP", "127.0.0.1")
+RCON_PORT = int(os.getenv("RCON_PORT", "2302"))
+RCON_PASSWORD = os.getenv("RCON_PASSWORD", "")
 
-@app.route('/')
-def home():
-    return "CARIM DayZ Bot działa (tylko keep-alive) 🚀"
+if not TOKEN or not RCON_PASSWORD:
+    print("❌ Brak DISCORD_TOKEN lub RCON_PASSWORD w zmiennych środowiskowych!")
+    exit(1)
 
-
-@app.route('/health')
-@app.route('/ping')
-def health_check():
-    return "OK", 200
-
-
-def run_flask_keepalive():
-    port = int(os.environ.get("PORT", 10000))
-    print(f"[KEEP-ALIVE] Flask startuje na porcie {port}")
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=False,
-        use_reloader=False,
-        threaded=True
-    )
-
-
-class SimpleBattlEyeRCon:
-    def __init__(self, host, port, password):
-        self.host = host.strip()
-        self.port = int(port)
-        self.password = password.strip()
+# ========================= RCON KLASA =========================
+class BattlEyeRCon:
+    def __init__(self):
         self.sock = None
         self.sequence = 0
         self.connected = False
-        self._create_socket()
+        self._connect()
 
-    def _create_socket(self):
+    def _connect(self):
         if self.sock:
-            try:
-                self.sock.close()
-            except:
-                pass
+            self.sock.close()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.settimeout(10.0)
-        print(f"[RCON] Utworzono socket → {self.host}:{self.port}")
+        self.sock.settimeout(8)
+        self.sock.connect((RCON_IP, RCON_PORT))
+        print(f"[RCON] Połączono z {RCON_IP}:{RCON_PORT}")
 
     def login(self):
-        print("[RCON] Próba logowania...")
+        packet = b'\xFF\x00' + RCON_PASSWORD.encode('utf-8')
+        self.sock.send(packet)
         try:
-            packet = b'\xFF\x00' + self.password.encode('utf-8')
-            self.sock.sendto(packet, (self.host, self.port))
-            data, _ = self.sock.recvfrom(1024)
-
-            if len(data) >= 9 and data.startswith(b'\xFF\x00') and data[7:9] == b'\x00\x01':
-                print("[RCON] Logowanie UDANE")
+            data = self.sock.recv(1024)
+            if len(data) >= 9 and data[7:9] == b'\x00\x01':
                 self.connected = True
+                print("[RCON] Zalogowano pomyślnie!")
                 return True
-            else:
-                print(f"[RCON] Logowanie NIEUDANE – odpowiedź: {data!r}")
-                return False
-        except Exception as e:
-            print(f"[RCON] Błąd logowania: {e}")
-            return False
+        except:
+            pass
+        print("[RCON] Logowanie nieudane")
+        return False
 
-    def send_command(self, command):
-        if not self.connected:
-            if not self.login():
-                time.sleep(8)
-                return None
+    def send(self, command: str) -> str:
+        if not self.connected and not self.login():
+            return "❌ Nie połączono z RCon"
+
+        self.sequence = (self.sequence + 1) % 256
+        packet = b'\xFF\x01' + bytes([self.sequence]) + command.encode('utf-8')
+        self.sock.send(packet)
 
         try:
-            self.sequence = (self.sequence + 1) % 256
-            packet = b'\xFF\x01' + bytes([self.sequence]) + command.encode('utf-8')
-            self.sock.sendto(packet, (self.host, self.port))
-            data, _ = self.sock.recvfrom(4096)
-
-            if not data.startswith(b'\xFF\x00'):
-                raise ValueError("Zła odpowiedź serwera")
-
-            response = data[9:].decode('utf-8', errors='replace').strip()
-            return response
-        except Exception as e:
-            print(f"[RCON] Błąd wysyłania komendy '{command}': {e}")
+            data = self.sock.recv(4096)
+            if data.startswith(b'\xFF\x00'):
+                return data[9:].decode('utf-8', errors='replace').strip()
+        except:
             self.connected = False
-            return None
+        return "❌ Brak odpowiedzi (timeout)"
 
+rcon = BattlEyeRCon()
 
-def rcon_worker():
-    host = os.environ.get('RCON_IP', '').strip()
-    port_str = os.environ.get('RCON_PORT', '2302').strip()  # 2302 to domyślny BattlEye
-    password = os.environ.get('RCON_PASSWORD', '').strip()
+# ========================= DISCORD BOT =========================
+intents = discord.Intents.default()
+intents.message_content = False
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
-    if not host or not password:
-        print("!!! BRAK RCON_IP LUB RCON_PASSWORD – bot w trybie uśpienia !!!")
-        while True:
-            time.sleep(1800)
+@client.event
+async def on_ready():
+    await tree.sync()
+    print(f"✅ Bot zalogowany jako {client.user}")
+    asyncio.create_task(update_status_loop())
 
-    try:
-        port = int(port_str)
-    except ValueError:
-        print("!!! Nieprawidłowy RCON_PORT – używam domyślnego 2302 !!!")
-        port = 2302
-
-    print(f"[START] RCON → {host}:{port} (hasło: {len(password)} znaków)")
-
-    rcon = SimpleBattlEyeRCon(host, port, password)
-
+async def update_status_loop():
+    """Co 60 sekund aktualizuje status bota na liczbę graczy"""
     while True:
         try:
-            resp = rcon.send_command("players")
-            if resp is not None:
-                print(f"[PLAYERS] {resp}")
-            else:
-                print("[PLAYERS] Brak odpowiedzi – ponawiam za 60s")
-        except Exception as e:
-            print(f"[RCON LOOP] Błąd: {e}")
-        time.sleep(60)
+            response = rcon.send("players")
+            if "players" in response.lower() or response:
+                # prosty parsing – bierzemy pierwszą liczbę
+                players = response.splitlines()[0].split()[0] if response else "0"
+                await client.change_presence(
+                    activity=discord.Game(name=f"Graczy: {players} | DayZ")
+                )
+        except:
+            pass
+        await asyncio.sleep(60)
 
+# ========================= KOMENDY =========================
+@tree.command(name="players", description="Lista graczy na serwerze")
+async def players(interaction: discord.Interaction):
+    await interaction.response.defer()
+    resp = rcon.send("players")
+    await interaction.followup.send(f"**Gracze online:**\n```{resp or 'Brak odpowiedzi'}```")
 
-if __name__ == '__main__':
-    print("══════════════════════════════════════════")
-    print("     CARIM DayZ RCon Bot – START")
-    print(f"PORT (keep-alive) : {os.environ.get('PORT', '10000 (domyślny)')}")
-    print(f"RCON_IP           : {os.environ.get('RCON_IP')}")
-    print(f"RCON_PORT         : {os.environ.get('RCON_PORT')}")
-    print(f"RCON_PASSWORD len : {len(os.environ.get('RCON_PASSWORD', ''))}")
-    print("══════════════════════════════════════════")
+@tree.command(name="say", description="Wiadomość na serwer (say -1 tekst)")
+async def say(interaction: discord.Interaction, tekst: str):
+    await interaction.response.defer()
+    resp = rcon.send(f"say -1 {tekst}")
+    await interaction.followup.send(f"✅ Wiadomość wysłana:\n`{tekst}`\nOdpowiedź: `{resp}`")
 
-    flask_thread = threading.Thread(target=run_flask_keepalive, daemon=True)
-    flask_thread.start()
+@tree.command(name="kick", description="Wyrzuć gracza")
+async def kick(interaction: discord.Interaction, id: int, powód: str = "Brak powodu"):
+    await interaction.response.defer()
+    resp = rcon.send(f"kick {id} {powód}")
+    await interaction.followup.send(f"✅ Kick {id} wysłany\nOdpowiedź: `{resp}`")
 
-    rcon_thread = threading.Thread(target=rcon_worker, daemon=True)
-    rcon_thread.start()
+@tree.command(name="ban", description="Ban gracza")
+async def ban(interaction: discord.Interaction, id: int, powód: str = "Brak powodu"):
+    await interaction.response.defer()
+    resp = rcon.send(f"ban {id} {powód}")
+    await interaction.followup.send(f"✅ Ban {id} wysłany\nOdpowiedź: `{resp}`")
 
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        print("Bot wyłączany (Ctrl+C)")
-    finally:
-        print("Koniec działania bota.")
-        sys.exit(0)
+@tree.command(name="rcon", description="Dowolna komenda RCon (dla adminów)")
+async def raw_rcon(interaction: discord.Interaction, komenda: str):
+    await interaction.response.defer()
+    resp = rcon.send(komenda)
+    await interaction.followup.send(f"**Wysłano:** `{komenda}`\n**Odpowiedź:**\n```{resp or 'Brak odpowiedzi'}```")
+
+# ========================= URUCHOMIENIE =========================
+if __name__ == "__main__":
+    print("🚀 Uruchamiam Carim Discord + RCon Bot...")
+    client.run(TOKEN)
