@@ -1,6 +1,6 @@
 # fly.toml
 
-app = "carim-zwqfmw"
+app = "carim-y-nntg"
 primary_region = "ams"
 
 [build]
