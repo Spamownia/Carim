@@ -1,23 +1,20 @@
-# fly.toml app configuration file generated for carim on 2026-03-18T12:16:31Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+app = "carim"
+primary_region = "ams"
 
-app = 'carim'
-primary_region = 'fra'
+[env]
+  PYTHONUNBUFFERED = "1"                # logi od razu widoczne
+  # Jeśli bot potrzebuje portu (rzadko), ale Flask keep-alive na 10000 → zostaw
+  PORT = "10000"                        # ale nie używaj [[services]] poniżej!
 
 [build]
+  builder = "paketobuildpacks/builder-jammy-full:latest"
 
-[http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'stop'
-  auto_start_machines = true
-  min_machines_running = 0
-  processes = ['app']
+# To jest kluczowe – wymusza start dokładnie Twoim poleceniem
+[processes]
+  app = "python main.py"
 
-[[vm]]
-  memory = '1gb'
-  cpu_kind = 'shared'
-  cpus = 1
-  memory_mb = 1024
+# ŻADNEGO [[services]] ani [http_service] – bot Discord NIE potrzebuje publicznego HTTP!
+# Jeśli masz, usuń całkowicie – inaczej Fly oczekuje nasłuchu na 8080 i crashuje
+
+[experimental]
+  auto_rollback = true
