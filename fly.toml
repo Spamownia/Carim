@@ -1,19 +1,25 @@
+# fly.toml
+
 app = "carim-zwqfmw"
 primary_region = "ams"
+
+[build]
+  builder = "paketobuildpacks/builder:base"   # zalecane dla Python + requirements.txt
 
 [env]
   PYTHONUNBUFFERED = "1"
 
-# Wyłącz automatyczne health-checki i proxy – bot nie nasłuchuje na 8080
-[http_service]
-  internal_port = 0          # lub usuń całą sekcję [http_service]
-  force_https = false
-  auto_stop_machines = false # opcjonalnie – żeby nie wyłączało po idle
-
-# Ewentualnie – wyłącz auto_stop jeśli chcesz, żeby zawsze działało
-auto_stop_machines = false
-auto_start_machines = true
-min_machines_running = 1
+# Brak [http_service] → nie będzie health-checków ani publicznego portu
+# To jest kluczowa zmiana – Twój bot to worker, nie serwis HTTP
 
 [processes]
-  app = "python main.py"     # jeśli używasz buildpacków
+  app = "python main.py"
+
+[deploy]
+  strategy = "bluegreen"          # lub "rolling" – bluegreen jest bezpieczniejsze
+  release_command = ""            # jeśli nie masz migracji
+
+# Żeby maszyna nie wyłączała się po idle
+auto_stop_machines  = false
+auto_start_machines = true
+min_machines_running = 1
