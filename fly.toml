@@ -1,17 +1,19 @@
-app = "carim"
+app = "carim-zwqfmw"
 primary_region = "ams"
 
 [env]
-  PYTHONUNBUFFERED = "1"          # logi od razu w stdout
-  # Jeśli używasz Flask keep-alive na 10000 – zostaw, ale nie używaj go jako głównego procesu
-  PORT = "10000"                  # opcjonalnie, jeśli Flask nasłuchuje
+  PYTHONUNBUFFERED = "1"
 
-[build]
-  builder = "paketobuildpacks/builder-jammy-full:latest"
+# Wyłącz automatyczne health-checki i proxy – bot nie nasłuchuje na 8080
+[http_service]
+  internal_port = 0          # lub usuń całą sekcję [http_service]
+  force_https = false
+  auto_stop_machines = false # opcjonalnie – żeby nie wyłączało po idle
 
-# To nadpisuje domyślny start buildpacka (flask run → python main.py)
+# Ewentualnie – wyłącz auto_stop jeśli chcesz, żeby zawsze działało
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+
 [processes]
-  app = "python main.py"
-
-[experimental]
-  auto_rollback = true
+  app = "python main.py"     # jeśli używasz buildpacków
