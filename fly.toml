@@ -2,19 +2,16 @@ app = "carim"
 primary_region = "ams"
 
 [env]
-  PYTHONUNBUFFERED = "1"                # logi od razu widoczne
-  # Jeśli bot potrzebuje portu (rzadko), ale Flask keep-alive na 10000 → zostaw
-  PORT = "10000"                        # ale nie używaj [[services]] poniżej!
+  PYTHONUNBUFFERED = "1"          # logi od razu w stdout
+  # Jeśli używasz Flask keep-alive na 10000 – zostaw, ale nie używaj go jako głównego procesu
+  PORT = "10000"                  # opcjonalnie, jeśli Flask nasłuchuje
 
 [build]
   builder = "paketobuildpacks/builder-jammy-full:latest"
 
-# To jest kluczowe – wymusza start dokładnie Twoim poleceniem
+# To nadpisuje domyślny start buildpacka (flask run → python main.py)
 [processes]
   app = "python main.py"
-
-# ŻADNEGO [[services]] ani [http_service] – bot Discord NIE potrzebuje publicznego HTTP!
-# Jeśli masz, usuń całkowicie – inaczej Fly oczekuje nasłuchu na 8080 i crashuje
 
 [experimental]
   auto_rollback = true
