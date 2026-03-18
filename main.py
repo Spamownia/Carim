@@ -11,7 +11,7 @@ app.config['PROPAGATE_EXCEPTIONS'] = True
 
 @app.route('/')
 def home():
-    return "CARIM DayZ Bot is running! (keep-alive only) 🚀"
+    return "CARIM DayZ Bot działa (tylko keep-alive) 🚀"
 
 
 @app.route('/health')
@@ -21,9 +21,8 @@ def health_check():
 
 
 def run_flask_keepalive():
-    # Flask tylko do utrzymania procesu przy życiu – NIE używany przez Fly proxy
-    port = int(os.environ.get("PORT", 10000))           # fallback na 10000
-    print(f"[Keep-alive] Uruchamiam Flask dummy server na 0.0.0.0:{port}")
+    port = int(os.environ.get("PORT", 10000))
+    print(f"[KEEP-ALIVE] Flask startuje na porcie {port}")
     app.run(
         host='0.0.0.0',
         port=port,
@@ -51,35 +50,30 @@ class SimpleBattlEyeRCon:
                 pass
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(10.0)
-        print(f"[RCon] Nowy socket → {self.host}:{self.port}")
+        print(f"[RCON] Utworzono socket → {self.host}:{self.port}")
 
     def login(self):
-        print("[RCon] Próba logowania...")
+        print("[RCON] Próba logowania...")
         try:
-            payload = self.password.encode('utf-8')
-            packet = b'\xFF\x00' + payload
+            packet = b'\xFF\x00' + self.password.encode('utf-8')
             self.sock.sendto(packet, (self.host, self.port))
             data, _ = self.sock.recvfrom(1024)
 
             if len(data) >= 9 and data.startswith(b'\xFF\x00') and data[7:9] == b'\x00\x01':
-                print("[RCon] Zalogowano pomyślnie")
+                print("[RCON] Logowanie UDANE")
                 self.connected = True
                 return True
             else:
-                print(f"[RCon] Błąd logowania – odpowiedź: {data!r}")
+                print(f"[RCON] Logowanie NIEUDANE – odpowiedź: {data!r}")
                 return False
-        except socket.timeout:
-            print("[RCon] Timeout logowania")
         except Exception as e:
-            print(f"[RCon] Błąd logowania: {e}")
-        self.connected = False
-        return False
+            print(f"[RCON] Błąd logowania: {e}")
+            return False
 
     def send_command(self, command):
         if not self.connected:
             if not self.login():
-                print("[RCon] Nie udało się zalogować – reconnect za 10s")
-                time.sleep(10)
+                time.sleep(8)
                 return None
 
         try:
@@ -89,71 +83,68 @@ class SimpleBattlEyeRCon:
             data, _ = self.sock.recvfrom(4096)
 
             if not data.startswith(b'\xFF\x00'):
-                raise ValueError("Nieprawidłowy header odpowiedzi")
+                raise ValueError("Zła odpowiedź serwera")
 
-            # Pomijamy header + sequence byte
             response = data[9:].decode('utf-8', errors='replace').strip()
             return response
-        except socket.timeout:
-            print("[RCon] Timeout komendy → reconnect")
-            self.connected = False
         except Exception as e:
-            print(f"[RCon] Błąd komendy: {e}")
+            print(f"[RCON] Błąd wysyłania komendy '{command}': {e}")
             self.connected = False
-        return None
+            return None
 
 
 def rcon_worker():
-    host = os.environ.get('RCON_IP', '147.93.162.60').strip()
-    port_str = os.environ.get('RCON_PORT', '3705').strip()
+    host = os.environ.get('RCON_IP', '').strip()
+    port_str = os.environ.get('RCON_PORT', '2302').strip()  # 2302 to domyślny BattlEye
     password = os.environ.get('RCON_PASSWORD', '').strip()
 
-    if not host or not port_str or not password:
-        print("!!! RCON_IP / RCON_PORT / RCON_PASSWORD nie ustawione – bot idle !!!")
+    if not host or not password:
+        print("!!! BRAK RCON_IP LUB RCON_PASSWORD – bot w trybie uśpienia !!!")
         while True:
-            time.sleep(3600)
+            time.sleep(1800)
 
-    port = int(port_str)
-    print(f"[RCON] Konfiguracja → {host}:{port} (hasło: {len(password)} znaków)")
+    try:
+        port = int(port_str)
+    except ValueError:
+        print("!!! Nieprawidłowy RCON_PORT – używam domyślnego 2302 !!!")
+        port = 2302
+
+    print(f"[START] RCON → {host}:{port} (hasło: {len(password)} znaków)")
 
     rcon = SimpleBattlEyeRCon(host, port, password)
 
     while True:
         try:
-            response = rcon.send_command("players")
-            if response is not None:
-                print(f"[RCon players] {response}")
+            resp = rcon.send_command("players")
+            if resp is not None:
+                print(f"[PLAYERS] {resp}")
             else:
-                print("[RCon] Komenda zwróciła None – czekam")
+                print("[PLAYERS] Brak odpowiedzi – ponawiam za 60s")
         except Exception as e:
-            print(f"[RCon worker] Nieoczekiwany błąd: {e}")
-
+            print(f"[RCON LOOP] Błąd: {e}")
         time.sleep(60)
 
 
 if __name__ == '__main__':
-    print("=== CARIM DayZ RCon Bot START ===")
-    print(f"PORT (keep-alive)   : {os.environ.get('PORT', 'nie ustawiony (użyje 10000)')}")
-    print(f"RCON_IP             : {os.environ.get('RCON_IP')}")
-    print(f"RCON_PORT           : {os.environ.get('RCON_PORT')}")
-    print(f"RCON_PASSWORD len   : {len(os.environ.get('RCON_PASSWORD', ''))}")
+    print("══════════════════════════════════════════")
+    print("     CARIM DayZ RCon Bot – START")
+    print(f"PORT (keep-alive) : {os.environ.get('PORT', '10000 (domyślny)')}")
+    print(f"RCON_IP           : {os.environ.get('RCON_IP')}")
+    print(f"RCON_PORT         : {os.environ.get('RCON_PORT')}")
+    print(f"RCON_PASSWORD len : {len(os.environ.get('RCON_PASSWORD', ''))}")
+    print("══════════════════════════════════════════")
 
-    # Wątek z dummy Flask (tylko keep-alive)
     flask_thread = threading.Thread(target=run_flask_keepalive, daemon=True)
     flask_thread.start()
 
-    # Główny worker RCON
     rcon_thread = threading.Thread(target=rcon_worker, daemon=True)
     rcon_thread.start()
 
-    # Trzymamy główny wątek żywy
     try:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
-        print("Wyłączanie bota (Ctrl+C)")
-    except Exception as e:
-        print(f"Główny wątek błąd: {e}")
+        print("Bot wyłączany (Ctrl+C)")
     finally:
-        print("Koniec działania.")
+        print("Koniec działania bota.")
         sys.exit(0)
