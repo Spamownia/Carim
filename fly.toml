@@ -1,11 +1,11 @@
-# fly.toml – wersja z http_service (żeby dashboard pokazywał zielone "healthy")
+# fly.toml – wersja z serwisem (żeby dashboard był zielony)
 
 app = "carim-y-nntg"
 primary_region = "ams"
 
 [env]
   PYTHONUNBUFFERED = "1"
-  PORT = "10000"               # musi być taki sam jak w kodzie
+  PORT = "10000"                              # MUSI być taki sam jak w kodzie Flask
 
 [processes]
   app = "python main.py"
@@ -18,7 +18,7 @@ primary_region = "ams"
 
   [[services.http_checks]]
     path = "/health"
-    grace_period = "15s"
-    interval = "30s"
+    grace_period = "20s"
+    interval = "60s"
     timeout = "10s"
     method = "GET"
