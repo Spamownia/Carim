@@ -1,3 +1,3 @@
+Flask>=3.0.0,<4.0
 setuptools<82.0
 carim-discord-bot
-flask
