@@ -1,24 +1,24 @@
-# fly.toml – wersja z serwisem (żeby dashboard był zielony)
+# fly.toml – czysta wersja dla background workera (bez publicznego portu)
 
 app = "carim-y-nntg"
 primary_region = "ams"
 
+[build]
+  builder = "paketobuildpacks/builder:base"   # jeśli używasz buildpacków Python
+
 [env]
-  PYTHONUNBUFFERED = "1"
-  PORT = "10000"                              # MUSI być taki sam jak w kodzie Flask
+  PYTHONUNBUFFERED = "1"                      # logi natychmiast w stdout
 
 [processes]
-  app = "python main.py"
+  app = "python main.py"                      # Twój jedyny proces – nazwa "app" jest domyślna i OK
 
-[http_service]
-  internal_port = 10000
-  force_https = true
-  auto_stop_machines = false
-  min_machines_running = 1
+# Maszyna ma działać non-stop
+auto_stop_machines  = false
+auto_start_machines = true
+min_machines_running = 1
 
-  [[services.http_checks]]
-    path = "/health"
-    grace_period = "20s"
-    interval = "60s"
-    timeout = "10s"
-    method = "GET"
+# Opcjonalnie – mniejszy VM, jeśli nie potrzebujesz dużo zasobów
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "256mb"
