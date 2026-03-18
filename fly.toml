@@ -1,23 +1,16 @@
-# fly.toml app configuration file generated for carim on 2026-03-18T11:34:13Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
-app = 'carim'
-primary_region = 'ams'
+app = "carim"                  # Twoja nazwa app z fly launch
+primary_region = "ams"         # lub Twój region, np. "fra" dla Frankfurt
 
 [build]
+  builder = "paketobuildpacks/builder-jammy-full:latest"  # lub pomiń jeśli używasz Dockera
 
-[http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'stop'
-  auto_start_machines = true
-  min_machines_running = 0
-  processes = ['app']
+[env]
+  PORT = "10000"               # Flask nadal nasłuchuje, ale nie używany publicznie
 
-[[vm]]
-  memory = '1gb'
-  cpu_kind = 'shared'
-  cpus = 1
-  memory_mb = 256
+# Brak [[services]] i [http_service] → zero publicznych portów, zero auto health checków na 8080
+
+[processes]
+  app = "python main.py"       # opcjonalnie, jeśli chcesz nazwać proces
+
+[experimental]
+  auto_rollback = true
