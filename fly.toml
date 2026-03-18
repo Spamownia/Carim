@@ -1,23 +1,27 @@
-# fly.toml
+# fly.toml app configuration file generated for carim-mod0bw on 2026-03-18T15:01:23Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "carim-y-nntg"          # ← zmień jeśli nazwa inna
-primary_region = "ams"
+app = 'carim-mod0bw'
+primary_region = 'ams'
 
 [build]
-  builder = "paketobuildpacks/builder:base"
+  builder = 'paketobuildpacks/builder:base'
 
 [env]
-  PYTHONUNBUFFERED = "1"
+  PORT = '8080'
 
-[processes]
-  app = "python main.py"
-
-# Bot ma działać 24/7
-auto_stop_machines  = false
-auto_start_machines = true
-min_machines_running = 1
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
-  cpu_kind = "shared"
-  cpus     = 1
-  memory   = "256mb"
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256
