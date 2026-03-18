@@ -1,3 +1,2 @@
-Flask>=3.0.0,<4.0
-setuptools<82.0
-carim-discord-bot
+discord.py>=2.4.0
+python-dotenv>=1.0.0
