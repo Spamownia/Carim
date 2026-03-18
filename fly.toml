@@ -1,22 +1,24 @@
-# fly.toml
+# fly.toml – wersja z http_service (żeby dashboard pokazywał zielone "healthy")
 
-app = "carim-y-nntg"           # ← Twoja nazwa aplikacji – nie zmieniaj jeśli to jest poprawne
+app = "carim-y-nntg"
 primary_region = "ams"
-
-[build]
-  builder = "paketobuildpacks/builder:base"
 
 [env]
   PYTHONUNBUFFERED = "1"
+  PORT = "10000"               # musi być taki sam jak w kodzie
 
 [processes]
-  app = "python main.py"       # ← TO JEST NAJWAŻNIEJSZA LINIA – uruchamia Twój skrypt zamiast flask run
+  app = "python main.py"
 
-# Maszyna ma cały czas działać (background worker / bot)
-auto_stop_machines  = false
-auto_start_machines = true
-min_machines_running = 1
+[http_service]
+  internal_port = 10000
+  force_https = true
+  auto_stop_machines = false
+  min_machines_running = 1
 
-# Opcjonalnie – jeśli chcesz mieć SSH do debugowania
-[experimental]
-  allowed_public_ports = [22]
+  [[services.http_checks]]
+    path = "/health"
+    grace_period = "15s"
+    interval = "30s"
+    timeout = "10s"
+    method = "GET"
