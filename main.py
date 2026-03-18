@@ -1,25 +1,22 @@
 import os
 import sys
-from threading import Thread
-from flask import Flask
-import asyncio
+import threading
 import socket
 import time
+import struct
+from flask import Flask
 
 app = Flask(__name__)
 app.config['PROPAGATE_EXCEPTIONS'] = True
-
 
 @app.route('/')
 def home():
     return "CARIM DayZ Bot is running! 🚀"
 
-
 @app.route('/health')
 @app.route('/ping')
 def health_check():
     return "OK", 200
-
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -30,131 +27,135 @@ class SimpleBattlEyeRCon:
     def __init__(self, host, port, password):
         self.host = host.strip()
         self.port = int(port)
-        self.password = password
+        self.password = password.strip()
         self.sock = None
+        self.sequence = 0          # BattlEye wymaga zwiększania sekwencji
         self.connected = False
+        self._create_socket()
 
-    def connect(self):
-        if self.connected and self.sock:
-            print("[RCon] Już połączony – używam istniejącego socketu")
-            return True
+    def _create_socket(self):
+        if self.sock:
+            try:
+                self.sock.close()
+            except:
+                pass
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.settimeout(8.0)   # 8 sekund – rozsądny kompromis
+        print(f"[RCon] Nowy socket UDP utworzony → {self.host}:{self.port}")
 
-        print(f"[RCon] Tworzę nowe połączenie: {self.host}:{self.port}")
-
+    def login(self):
+        print("[RCon] Próba logowania...")
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.sock.settimeout(10)
-            print("[RCon] Socket utworzony (UDP)")
+            # Pakiet logowania: header (0xFF 0x00) + hasło
+            payload = self.password.encode('utf-8')
+            packet = b'\xFF\x00' + payload
 
-            self.sock.connect((self.host, self.port))
-            print("[RCon] connect() OK – socket podłączony")
+            self.sock.sendto(packet, (self.host, self.port))
+            print(f"[RCon] Wysyłanie login (len={len(packet)}) → {packet!r}")
 
-            # Pakiet login: FF 00 + hasło
-            login_packet = b'\xFF\x00' + self.password.encode('utf-8')
-            print(f"[RCon] Wysyłam pakiet login (długość: {len(login_packet)} bajtów)")
-            self.sock.send(login_packet)
+            data, addr = self.sock.recvfrom(1024)
+            print(f"[RCon] Odpowiedź login (od {addr}, len={len(data)}): {data!r}")
 
-            print("[RCon] Czekam na odpowiedź login (timeout 10s)...")
-            data = self.sock.recv(1024)
-            print(f"[RCon] Otrzymano dane (długość {len(data)} bajtów): {data!r}")
-
-            # BattlEye login success: zaczyna się od FF 00 01
-            if len(data) >= 9 and data[7:9] == b'\x00\x01':
-                print("RCon: zalogowano pomyślnie!")
+            # Sukces: FF 00 00 01 00 ... (czasami z "Login successful" tekstem)
+            if len(data) >= 9 and data.startswith(b'\xFF\x00') and data[7:9] == b'\x00\x01':
+                print("[RCon] Zalogowano pomyślnie!")
                 self.connected = True
                 return True
             else:
-                print(f"RCon: błąd logowania – odpowiedź: {data!r}")
+                print(f"[RCon] Błąd logowania – odpowiedź: {data!r}")
                 return False
 
         except socket.timeout:
-            print("RCon: timeout podczas oczekiwania na odpowiedź login")
-            return False
-        except ConnectionRefusedError:
-            print("RCon: połączenie odrzucone (serwer nie słucha lub firewall)")
-            return False
-        except OSError as e:
-            print(f"RCon: błąd systemu (OSError): {e}")
-            return False
+            print("[RCon] Timeout podczas logowania")
         except Exception as e:
-            print(f"RCon: nieoczekiwany błąd: {type(e).__name__}: {e}")
-            return False
+            print(f"[RCon] Błąd logowania: {type(e).__name__}: {e}")
+        self.connected = False
+        return False
 
     def send_command(self, command):
-        print(f"[RCon] Wysyłam komendę: '{command}'")
-
         if not self.connected:
-            if not self.connect():
-                return "Nie udało się połączyć z RCon"
+            if not self.login():
+                return "Nie udało się zalogować do RCon"
 
         try:
-            packet = b'\xFF\x01' + command.encode('utf-8')
-            print(f"[RCon] Pakiet komendy (długość: {len(packet)} bajtów)")
-            self.sock.send(packet)
+            self.sequence = (self.sequence + 1) % 256
+            seq_byte = bytes([self.sequence])
 
-            print("[RCon] Czekam na odpowiedź...")
-            data = self.sock.recv(4096)
-            print(f"[RCon] Otrzymano odpowiedź (długość {len(data)} bajtów): {data!r}")
+            payload = seq_byte + command.encode('utf-8')
+            packet = b'\xFF\x01' + payload
 
-            if len(data) >= 3 and data[0:1] == b'\xFF':
-                response = data[3:].decode('utf-8', errors='ignore').strip()
-                print(f"[RCon] Sukces – odpowiedź: {response}")
-                return response
-            else:
+            print(f"[RCon] Wysyłam komendę '{command}' (seq={self.sequence}, len={len(packet)})")
+            print(f"     Pakiet: {packet!r}")
+
+            self.sock.sendto(packet, (self.host, self.port))
+
+            data, addr = self.sock.recvfrom(4096)
+            print(f"[RCon] Odpowiedź (od {addr}, len={len(data)}): {data!r}")
+
+            if len(data) < 9 or not data.startswith(b'\xFF\x00'):
                 print("[RCon] Nieprawidłowy format odpowiedzi")
-                return "Nieprawidłowa odpowiedź"
+                return "Nieprawidłowa odpowiedź od serwera"
+
+            # Odpowiedź zaczyna się od FF 00 + seq + tekst
+            response = data[9:].decode('utf-8', errors='replace').strip()  # pomijamy header + seq
+            print(f"[RCon] Sukces – odpowiedź: {response}")
+            return response
+
         except socket.timeout:
-            print("[RCon] Timeout odpowiedzi na komendę")
+            print("[RCon] Timeout podczas oczekiwania na odpowiedź")
+            self.connected = False
             return "Timeout"
         except Exception as e:
             print(f"[RCon] Błąd wysyłania komendy: {type(e).__name__}: {e}")
             self.connected = False
-            return str(e)
+            return f"Błąd: {str(e)}"
 
 
-async def rcon_loop():
+def rcon_worker():
     host = os.environ.get('RCON_IP', '147.93.162.60').strip()
     port = os.environ.get('RCON_PORT', '3705').strip()
-    password = os.environ.get('RCON_PASSWORD', '')
+    password = os.environ.get('RCON_PASSWORD', '').strip()
 
     if not host or not port or not password:
-        print("RCON nie skonfigurowany – pomijam")
+        print("RCON nie skonfigurowany (brak IP/port/hasła) – pomijam pętlę")
         while True:
-            await asyncio.sleep(3600)
+            time.sleep(3600)
 
     rcon = SimpleBattlEyeRCon(host, port, password)
 
-    print("Start pętli RCon...")
-
+    print("Start pętli RCon (co ~60 sekund wysyłane 'players')...")
     while True:
         try:
             response = rcon.send_command("players")
-            print(f"Odpowiedź RCon (players): {response}")
-            await asyncio.sleep(60)
+            print(f"[RCon] Odpowiedź na 'players': {response}")
         except Exception as e:
-            print(f"Błąd w pętli RCon: {e}")
-            await asyncio.sleep(15)  # krótszy wait przy błędzie
+            print(f"[RCon] Nieoczekiwany błąd w pętli: {e}")
+        time.sleep(60)  # co minutę
 
 
 if __name__ == '__main__':
     print("=== BOT START ===")
-    print(f"RCON_IP:   {os.environ.get('RCON_IP')}")
-    print(f"RCON_PORT: {os.environ.get('RCON_PORT')}")
+    print(f"RCON_IP     : {os.environ.get('RCON_IP')}")
+    print(f"RCON_PORT   : {os.environ.get('RCON_PORT')}")
     print(f"RCON_PASSWORD length: {len(os.environ.get('RCON_PASSWORD', ''))}")
 
-    flask_thread = Thread(target=run_flask, daemon=True)
+    # Flask w osobnym wątku (keep-alive dla Render Web Service)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-
     print("Flask keep-alive uruchomiony")
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # RCON w osobnym wątku (bo blocking socket)
+    rcon_thread = threading.Thread(target=rcon_worker, daemon=True)
+    rcon_thread.start()
 
+    # Główny wątek czeka na Ctrl+C
     try:
-        loop.run_until_complete(rcon_loop())
+        while True:
+            time.sleep(3600)
     except KeyboardInterrupt:
-        print("Wyłączanie...")
+        print("Wyłączanie bota...")
     except Exception as e:
-        print(f"Główny błąd asyncio: {e}")
+        print(f"Główny błąd: {e}")
     finally:
-        loop.close()
+        print("Koniec działania.")
+        sys.exit(0)
