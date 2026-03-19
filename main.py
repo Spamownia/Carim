@@ -11,7 +11,6 @@ import discord
 from discord import app_commands
 from flask import Flask, jsonify
 from dotenv import load_dotenv
-import requests  # do sprawdzenia outbound IP (TCP działa na pewno)
 
 # ────────────────────────────────────────────────
 # Ładowanie env
@@ -31,13 +30,6 @@ except:
 print("[START] Skrypt uruchomiony")
 print(f"  TOKEN: {'OK' if DISCORD_TOKEN else 'BRAK'}")
 print(f"  RCON: {RCON_IP}:{RCON_PORT}  (hasło dł. {len(RCON_PASSWORD or '')})")
-
-# Próba wyświetlenia outbound IP Render (działa po TCP)
-try:
-    outbound_ip = requests.get("https://api.ipify.org", timeout=5).text
-    print(f"[INFO] Outbound IP Render: {outbound_ip}")
-except Exception as e:
-    print(f"[INFO] Nie udało się pobrać outbound IP: {e}")
 
 # ────────────────────────────────────────────────
 # Flask health
@@ -93,7 +85,7 @@ class BattlEyeRCon:
             if not self.sock:
                 return False
 
-        for attempt in range(1, 4):  # 3 próby
+        for attempt in range(1, 4):
             jitter = random.uniform(0.5, 1.5)
             print(f"[RCON LOGIN] Próba {attempt}/3")
             packet = self._build_packet(0x00, self.password.encode('utf-8', 'replace'))
@@ -136,7 +128,6 @@ class BattlEyeRCon:
         print(f"[RCON CMD] {cmd}")
         if not self.logged_in and not self.login():
             return "❌ Login failed"
-        # Placeholder – rozszerz później na pełny send (typ 0x01 + cmd) + multi-packet recv
         return f"[DEBUG] wysłano '{cmd}' – brak pełnej obsługi odpowiedzi"
 
 # ────────────────────────────────────────────────
