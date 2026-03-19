@@ -11,9 +11,10 @@ import discord
 from discord import app_commands
 from flask import Flask, jsonify
 from dotenv import load_dotenv
+import requests  # ← do pobrania outbound IP
 
 # ────────────────────────────────────────────────
-# Ładowanie env
+# Ładowanie env + wyświetlanie outbound IP Render
 # ────────────────────────────────────────────────
 load_dotenv()
 
@@ -31,8 +32,18 @@ print("[START] Skrypt uruchomiony")
 print(f"  TOKEN: {'OK' if DISCORD_TOKEN else 'BRAK'}")
 print(f"  RCON: {RCON_IP}:{RCON_PORT}  (hasło dł. {len(RCON_PASSWORD or '')})")
 
+# Wyświetlenie outbound IP Render (przez TCP – działa na pewno)
+print("\n===== OUTBOUND IP TEST =====")
+try:
+    outbound_ip = requests.get("https://api.ipify.org", timeout=5).text.strip()
+    print(f"[INFO] Twój outbound IP na Render: {outbound_ip}")
+    print("     → Podaj TEN IP supportowi g-portal do whitelist!")
+except Exception as e:
+    print(f"[INFO] Nie udało się pobrać outbound IP: {e}")
+    print("     → Spróbuj ręcznie: otwórz https://api.ipify.org w przeglądarce z Render (lub użyj curl w shellu jeśli masz dostęp)")
+
 # ────────────────────────────────────────────────
-# Flask health
+# Flask health (bez zmian)
 # ────────────────────────────────────────────────
 app = Flask(__name__)
 
@@ -46,7 +57,7 @@ def health():
     })
 
 # ────────────────────────────────────────────────
-# BattlEye RCON class
+# BattlEye RCON class (bez zmian – zostawiam jak było)
 # ────────────────────────────────────────────────
 class BattlEyeRCon:
     def __init__(self, ip: str, port: int, password: str):
@@ -131,7 +142,7 @@ class BattlEyeRCon:
         return f"[DEBUG] wysłano '{cmd}' – brak pełnej obsługi odpowiedzi"
 
 # ────────────────────────────────────────────────
-# RCON init + auto test
+# RCON init + auto test (bez zmian)
 # ────────────────────────────────────────────────
 rcon = None
 if RCON_IP and RCON_PORT and RCON_PASSWORD:
@@ -143,7 +154,7 @@ if RCON_IP and RCON_PORT and RCON_PASSWORD:
         print("===== RCON FAIL – patrz wyżej =====")
 
 # ────────────────────────────────────────────────
-# Discord
+# Discord (bez zmian)
 # ────────────────────────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = False
@@ -176,7 +187,7 @@ def run_bot():
         print("[DISCORD] brak tokena")
 
 # ────────────────────────────────────────────────
-# Main
+# Main (bez zmian)
 # ────────────────────────────────────────────────
 if __name__ == "__main__":
     print("[MAIN] start")
